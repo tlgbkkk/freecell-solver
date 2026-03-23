@@ -11,6 +11,9 @@ FPS = 60
 BG_COLOR = (20, 100, 20)
 
 pygame.init()
+pygame.font.init()
+font = pygame.font.SysFont('Arial', 20, bold=True)
+
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("FreeCell Solver")
 clock = pygame.time.Clock()
@@ -68,6 +71,13 @@ dragging_cards = []
 drag_offset_x = drag_offset_y = 0
 source_type = source_index = None
 
+buttons = {
+    "BFS": pygame.Rect(50, 720, 100, 40),
+    "DFS": pygame.Rect(170, 720, 100, 40),
+    "UCS": pygame.Rect(290, 720, 100, 40),
+    "A*": pygame.Rect(410, 720, 100, 40)
+}
+
 
 def get_max_movable_cards(empty_fc, empty_cols, moving_to_empty_col=False):
     if moving_to_empty_col and empty_cols > 0:
@@ -101,9 +111,9 @@ def validate_drop(cards, dest_type, dest_idx):
         empty_fc = free_cells.count(None)
         empty_cols = sum(1 for c in tableaus if not c)
 
-        if not col:  # Thả vào cột trống
+        if not col:
             return len(cards) <= get_max_movable_cards(empty_fc, empty_cols, moving_to_empty_col=True)
-        else:  # Thả nối đuôi
+        else:
             if len(cards) > get_max_movable_cards(empty_fc, empty_cols, moving_to_empty_col=False):
                 return False
             target_card = col[-1]
@@ -121,27 +131,6 @@ def execute_move(cards, dest_type, dest_idx):
         tableaus[dest_idx].extend(cards)
 
 
-def solver_move(src_type, src_idx, dest_type, dest_idx, count):
-    if src_type == 'tableau':
-        if len(tableaus[src_idx]) < count: return False
-        cards = tableaus[src_idx][-count:]
-        if not is_valid_sequence(cards): return False
-    elif src_type == 'freecell' and count == 1:
-        if free_cells[src_idx] is None: return False
-        cards = [free_cells[src_idx]]
-    else:
-        return False
-
-    if validate_drop(cards, dest_type, dest_idx):
-        if src_type == 'tableau':
-            del tableaus[src_idx][-count:]
-        elif src_type == 'freecell':
-            free_cells[src_idx] = None
-        execute_move(cards, dest_type, dest_idx)
-        return True
-    return False
-
-
 running = True
 while running:
     mouse_x, mouse_y = pygame.mouse.get_pos()
@@ -151,7 +140,29 @@ while running:
             running = False
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            # 1. Bốc từ Tableau
+
+            btn_clicked = False
+
+            if buttons["BFS"].collidepoint(mouse_x, mouse_y):
+                # call BFS o day
+
+                btn_clicked = True
+            elif buttons["DFS"].collidepoint(mouse_x, mouse_y):
+                # call DFS o day
+
+                btn_clicked = True
+            elif buttons["UCS"].collidepoint(mouse_x, mouse_y):
+                # call UCS o day
+
+                btn_clicked = True
+            elif buttons["A*"].collidepoint(mouse_x, mouse_y):
+                # call A* o day
+
+                btn_clicked = True
+
+            if btn_clicked:
+                continue
+
             for col_idx, column in enumerate(tableaus):
                 clicked_row = -1
                 for row_idx in range(len(column) - 1, -1, -1):
@@ -211,6 +222,7 @@ while running:
 
                 dragging_cards = []
 
+    # load GUI
     screen.fill(BG_COLOR)
 
     for i in range(4):
@@ -228,6 +240,14 @@ while running:
     if dragging_cards:
         for i, card_info in enumerate(dragging_cards):
             screen.blit(card_info['img'], (mouse_x + drag_offset_x, mouse_y + drag_offset_y + i * 35))
+
+    # Vẽ nút bấm
+    for name, rect in buttons.items():
+        color = (180, 180, 180) if rect.collidepoint(mouse_x, mouse_y) else (220, 220, 220)
+        pygame.draw.rect(screen, color, rect, border_radius=5)
+        text_surf = font.render(name, True, (0, 0, 0))
+        text_rect = text_surf.get_rect(center=rect.center)
+        screen.blit(text_surf, text_rect)
 
     pygame.display.flip()
     clock.tick(FPS)

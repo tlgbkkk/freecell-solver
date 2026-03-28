@@ -5,7 +5,7 @@ import random
 from pysol_cards.deal_game import Game
 from logic import (SUITS_MAP, INV_SUITS, foundation_suits, get_color,
                    get_max_movable_cards, is_valid_sequence, decode_state)
-from bfs import run_bfs
+from bdfs import run_bfs, run_dfs
 
 # config
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -75,21 +75,41 @@ tableaus, free_cells, foundations, solver_ctx = init_random_pysol_game()
 
 
 # UI update
-def update_board_from_state(b_state):
+def update_board_from_state(state):
+    """
+    Updated to handle the tuple-based state (tabs, fcs, founds) 
+    returned by the optimized solver.
+    """
     global tableaus, free_cells, foundations
-    tabs, fcs, founds = decode_state(b_state)
+    
+    # State is now directly (tableaus, free_cells, foundations)
+    tabs, fcs, founds = state
 
-    foundations = [[] for _ in range(4)]
-    for i, suit in enumerate(foundation_suits):
-        for rank in range(1, founds[i] + 1):
-            foundations[i].append(make_card(rank, suit))
+    # 1. Update Foundations
+    # founds is a tuple of ranks (e.g., (0, 5, 2, 13))
+    new_foundations = [[] for _ in range(4)]
+    for i, rank_count in enumerate(founds):
+        suit = foundation_suits[i]
+        for rank in range(1, rank_count + 1):
+            new_foundations[i].append(make_card(rank, suit))
+    foundations = new_foundations
 
+    # 2. Update Free Cells
+    # fcs is a tuple of (rank, suit) or None
     free_cells = [make_card(c[0], c[1]) if c else None for c in fcs]
+    # Ensure it always has 4 slots
+    while len(free_cells) < 4:
+        free_cells.append(None)
 
-    tableaus = []
+    # 3. Update Tableaus
+    # tabs is a tuple of tuples of (rank, suit)
+    new_tableaus = []
     for col in tabs:
-        tableaus.append([make_card(r, s) for r, s in col])
-    while len(tableaus) < 8: tableaus.append([])
+        new_tableaus.append([make_card(r, s) for r, s in col])
+    # Ensure we have exactly 8 columns for the layout logic
+    while len(new_tableaus) < 8:
+        new_tableaus.append([])
+    tableaus = new_tableaus
 
 
 def get_layout_positions(tabs, fcs, founds):
@@ -156,14 +176,19 @@ while running:
     if solver_ctx['path'] and not animating:
         next_state = solver_ctx['path'].pop(0)
 
+    
         current_tabs = tuple(tuple((c['rank'], c['suit']) for c in col) for col in tableaus)
         current_fcs = tuple((c['rank'], c['suit']) if c else None for c in free_cells)
         current_founds = tuple(len(f) for f in foundations)
 
         pos_old = get_layout_positions(current_tabs, current_fcs, current_founds)
-        next_tabs, next_fcs, next_founds = decode_state(next_state)
+        
+       
+        next_tabs, next_fcs, next_founds = next_state
+            
         pos_new = get_layout_positions(next_tabs, next_fcs, next_founds)
 
+        
         moved_key = next((k for k in pos_new if k in pos_old and pos_old[k] != pos_new[k]), None)
 
         if moved_key:
@@ -171,8 +196,11 @@ while running:
             anim_start_pos, anim_end_pos = pos_old[moved_key], pos_new[moved_key]
             anim_start_time = current_time
 
+        
         update_board_from_state(next_state)
-        if not solver_ctx['path']: solver_ctx['status'] = "Finished Auto-playing!"
+        
+        if not solver_ctx['path']: 
+            solver_ctx['status'] = "Finished Auto-playing!"
 
 
     for event in pygame.event.get():
@@ -181,7 +209,12 @@ while running:
             solver_ctx['is_solving'] = False
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not solver_ctx['path']:
+            if solver_ctx['is_solving']:
+                continue
             btn_clicked = False
+            start_tabs = tuple(tuple((c['rank'], c['suit']) for c in col) for col in tableaus)
+            start_fcs = tuple((c['rank'], c['suit']) if c else None for c in free_cells)
+            start_founds = tuple(len(f) for f in foundations)
 
             if buttons["BFS"].collidepoint(mouse_x, mouse_y):
                 if not solver_ctx['is_solving']:
@@ -194,7 +227,14 @@ while running:
                 btn_clicked = True
 
             elif buttons["DFS"].collidepoint(mouse_x, mouse_y):
-                # call DFS o day
+                if not solver_ctx['is_solving']:
+                    solver_ctx['is_solving'] = True
+                    start_tabs = tuple(tuple((c['rank'], c['suit']) for c in col) for col in tableaus)
+                    start_fcs = tuple((c['rank'], c['suit']) if c else None for c in free_cells)
+                    start_founds = tuple(len(f) for f in foundations)
+                    threading.Thread(target=run_dfs, args=(start_tabs, start_fcs, start_founds, solver_ctx), 
+                                     daemon=True).start()
+                btn_clicked = True
 
                 btn_clicked = True
             elif buttons["UCS"].collidepoint(mouse_x, mouse_y):
@@ -298,6 +338,7 @@ while running:
         pygame.draw.rect(screen, color, rect, border_radius=5)
         text_surf = font.render(name, True, (0, 0, 0))
         screen.blit(text_surf, text_surf.get_rect(center=rect.center))
+   
 
     pygame.display.flip()
     clock.tick(FPS)
